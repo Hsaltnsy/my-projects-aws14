@@ -1,25 +1,48 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: |
-  This temp launches an EC2 instance which enables SSH.
+  This temp launches an EC2 instance which enables SSH and HTTP.
 Resources:
   CFNInstance:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: ami-0889a44b331db0194
+      ImageId: ami-0bef6cc322bfff646
       InstanceType: t2.micro
-      KeyName: okt-aws # Use your keypair name
+      KeyName: key-pair
       SecurityGroups: 
         - !Ref CFNSecGr
       Tags: 
         - Key: Name
-          Value: CFNInstance
+          Value: !Sub Web Server of StackName ${AWS:StackName}
+      UserData:
+        Fn::Base64: 
+          !Sub |
+            #! /bin/bash
+            yum update -y
+            yum install httpd -y
+            FOLDER="https://raw.githubusercontent.com/Hsaltnsy/my-projects-aws14/main/aws/projects/101-kittens-carousel-static-website-ec2/static-web/"
+            cd /var/www/html
+            wget $FOLDER/index.html
+            wget $FOLDER/cat0.jpg
+            wget $FOLDER/cat1.jpg
+            wget $FOLDER/cat2.jpg
+            wget $FOLDER/cat3.png
+            systemctl start httpd
+            systemctl enable httpd
 
   CFNSecGr:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Enables SSH. # Required
+      GroupDescription: Enables SSH and HTTP.
       SecurityGroupIngress: 
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
           CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+  
+
+
+
