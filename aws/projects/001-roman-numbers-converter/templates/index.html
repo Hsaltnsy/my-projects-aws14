@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Number to Roman Numeral Converter</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='bootstrap.min.css') }}">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='custom.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="text-center">
+            <h1 class="mt-5">Number to Roman Numeral Converter</h1>
+            <form method="POST" action="/" class="mt-4">
+                <div class="input-group">
+                    <input type="text" class="form-control" name="number" placeholder="Enter a number" required>
+                    <button type="submit" class="btn btn-primary">Convert</button>
+                </div>
+            </form>
+        </div>
+        <div class="image-container">
+            <img src="{{ url_for('static', filename='roman_numbers_clock.jpg') }}" alt="Description of the image" class="img-fluid centered-image">
+        </div>
+    </div>
+    <h3>This webpage is created by {{ developer_name }} </h3>
+</body>
+
+</html>

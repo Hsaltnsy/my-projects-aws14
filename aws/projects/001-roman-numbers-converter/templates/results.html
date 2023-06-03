@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Number to Roman Numeral Converter - Results</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='bootstrap.min.css') }}">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='custom.css') }}">
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            height: 100vh;
+            margin: 0;
+            padding-top: 0;
+        }
+        .result-container {
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h1 class="mt-5">Number to Roman Numeral Converter - Results</h1>
+    <div class="result-container">
+        {% if roman_number %}
+            <h2 class="mt-4">The Roman numeral equivalent of {{ number }} is {{ roman_number }}.</h2>
+        {% else %}
+            <h2 class="mt-4">{{ error_message }}</h2>
+        {% endif %}
+        <br>
+        <a href="/" class="btn btn-primary">Convert another number</a>
+    </div>
+    <div class="image-container">
+        <img src="{{ url_for('static', filename='roman.jpg') }}" alt="Description of the image" class="img-fluid centered-image">
+    </div>
+    <h3>This webpage is created by {{ developer_name }}</h3>
+</body>
+</html>
