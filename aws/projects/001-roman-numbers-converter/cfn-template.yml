@@ -1,0 +1,171 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: |
+  In this project the web application converts the given number to the Roman numerals. 
+  The application coded in Python and deployed as a web application with Flask on 
+  AWS Elastic Compute Cloud (EC2) Instance using AWS Cloudformation and CLI Services.
+
+Parameters:
+  VPC:
+    Description: Choose one VPC
+    Type: AWS::EC2::VPC::Id
+
+  Subnets:
+    Description: Choose at least 2 subnets
+    Type: List<AWS::EC2::Subnet::Id>
+
+  MyKeyPair:
+    Description: Choose your keyname
+    Type: AWS::EC2::KeyPair::KeyName
+
+  EnvParameter:
+    Description: Choose your env type
+    Type: String
+    AllowedValues:
+         - prod
+         - test
+  
+  InstanceType:
+    Description: Choose the instance type
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+         - t2.micro
+         - t3.micro
+         - t2.nano
+  
+Mappings:
+  RegionImageMap:
+    us-east-1:
+      prod: ami-0715c1897453cabd1
+      test: ami-0bef6cc322bfff646
+    us-east-2:
+      prod: ami-01107263728f3bef4
+      test: ami-05842f1afbf311a43
+    us-west-1:
+      prod: ami-0062dbf6b829f04e1
+      test: ami-04669a22aad391419
+    us-west-2:
+      prod: ami-0ab193018f3e9351b
+      test: ami-03c7c1f17ee073747
+    eu-west-1:
+      prod: ami-04f7efe62f419d9f5
+      test: ami-0e23c576dacf2e3df
+  
+Resources:
+  MySecGrp:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SSH and HTTP # Required
+      GroupName: flask-sec-grp
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp : 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp : 0.0.0.0/0
+      VpcId: !Ref VPC
+  
+  MyTargetGrp:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      IpAddressType: ipv4
+      Port: 80
+      Name: flask-target-grp
+      Protocol: HTTP
+      UnhealthyThresholdCount: 2
+      VpcId: !Ref VPC
+
+  MyListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions: # Required
+        - TargetGroupArn: !GetAtt MyTargetGrp.TargetGroupArn
+          Type: forward
+      LoadBalancerArn: !Ref MyELB # Required
+      Port: 80
+      Protocol: HTTP
+  
+  MyELB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      Name: flask-app-elb
+      SecurityGroups: 
+        - !GetAtt MySecGrp.GroupId
+      Subnets: !Ref Subnets
+      Type: application
+
+  MyLT:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: !FindInMap
+          - RegionImageMap
+          - !Ref "AWS::Region"
+          - !Ref EnvParameter
+        InstanceType: !Ref InstanceType
+        KeyName: !Ref MyKeyPair
+        SecurityGroupIds:
+          - !GetAtt MySecGrp.GroupId
+        UserData: 
+          Fn::Base64: !Sub |
+            #! /bin/bash
+            yum update -y
+            yum install -y python3 python3-pip
+            pip3 install flask
+            FOLDER="https://raw.githubusercontent.com/Hsaltnsy/my-projects-aws14/main/aws/projects/001-roman-numbers-converter/"
+            mkdir roman-number-conversion-project && cd roman-number-conversion-project
+            wget $FOLDER/app.py
+            mkdir templates && cd templates
+            wget $FOLDER/templates/index.html
+            wget $FOLDER/templates/results.html
+            cd .. && mkdir static && cd static
+            wget $FOLDER/static/roman_numbers_clock.jpg
+            wget $FOLDER/static/roman.jpg
+            wget $FOLDER/static/custom.css
+            wget $FOLDER/static/bootstrap.min.css
+            wget $FOLDER/static/styles.css
+            cd ..
+            nohup python3 app.py > /var/log/flask.log 2>&1 &
+      LaunchTemplateName: flask-lt
+  
+  MyASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: flask-asg
+      DesiredCapacity: 1
+      HealthCheckType: ELB
+      LaunchTemplate:
+        LaunchTemplateId: !Ref MyLT
+        Version: 1
+      MaxSize: 4 # Required
+      MinSize: 1 # Required
+      TargetGroupARNs: 
+        - !Ref MyTargetGrp
+      VPCZoneIdentifier: !Ref Subnets
+
+  MyASGPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref MyASG # Required
+      PolicyType: TargetTrackingScaling
+      TargetTrackingConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ASGAverageCPUUtilization
+        TargetValue: 60.0
+
+Outputs:
+  DNScfn:
+    Description: DNS of ELB
+    Value: !Join 
+      - ''
+      - - 'http://'
+        - !GetAtt MyELB.DNSName
