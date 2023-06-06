@@ -121,7 +121,7 @@ Resources:
             yum update -y
             yum install -y python3 python3-pip
             pip3 install flask
-            FOLDER="https://raw.githubusercontent.com/Hsaltnsy/my-projects-aws14/main/aws/projects/001-roman-numbers-converter/"
+            FOLDER="https://raw.githubusercontent.com/hsaltinsoy/my-projects-aws14/main/aws/projects/001-roman-numbers-converter/"
             mkdir roman-number-conversion-project && cd roman-number-conversion-project
             wget $FOLDER/app.py
             mkdir templates && cd templates
