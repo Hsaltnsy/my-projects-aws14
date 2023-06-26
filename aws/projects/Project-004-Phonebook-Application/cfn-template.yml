@@ -1,0 +1,221 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: |
+  The Phonebook Application aims to create a phonebook application in Python and 
+  deployed as a web application with Flask on AWS Application Load Balancer with
+  Auto Scaling Group of Elastic Compute Cloud (EC2) Instances and Relational 
+  Database Service (RDS) using AWS Cloudformation Service.
+
+Parameters:
+  VPC:
+    Description: Choose one VPC
+    Type: AWS::EC2::VPC::Id
+
+  Subnets:
+    Description: Choose at least 2 subnets
+    Type: List<AWS::EC2::Subnet::Id>
+
+  MyKeyPair:
+    Description: Choose your keyname
+    Type: AWS::EC2::KeyPair::KeyName
+
+  EnvParameter:
+    Description: Choose your env type
+    Type: String
+    AllowedValues:
+         - prod
+         - test
+  
+  InstanceType:
+    Description: Choose the instance type
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+         - t2.micro
+         - t3.micro
+         - t2.nano
+  
+Mappings:
+  RegionImageMap:
+    us-east-1:
+      prod: ami-0715c1897453cabd1
+      test: ami-0bef6cc322bfff646
+    us-east-2:
+      prod: ami-01107263728f3bef4
+      test: ami-05842f1afbf311a43
+    us-west-1:
+      prod: ami-0062dbf6b829f04e1
+      test: ami-04669a22aad391419
+    us-west-2:
+      prod: ami-0ab193018f3e9351b
+      test: ami-03c7c1f17ee073747
+    eu-west-1:
+      prod: ami-04f7efe62f419d9f5
+      test: ami-0e23c576dacf2e3df
+  
+Resources:
+  MyELBSecGrp:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for ELB
+      GroupName: elb-sec-grp
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp : 0.0.0.0/0
+      VpcId: !Ref VPC
+  
+  MyEC2SecGrp:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: ec2-sec-group
+      GroupDescription: Security group for EC2 instances
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref MyELBSecGrp
+
+  MyDBSecGrp:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: rds-db-sec-grp
+      GroupDescription: Database Security Group
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref MyEC2SecGrp
+
+  MyTargetGrp:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      IpAddressType: ipv4
+      Port: 80
+      Name: flask-target-grp
+      Protocol: HTTP
+      UnhealthyThresholdCount: 2
+      VpcId: !Ref VPC
+
+  MyListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions: #Required
+        - TargetGroupArn: !GetAtt MyTargetGrp.TargetGroupArn
+          Type: forward
+      LoadBalancerArn: !Ref MyELB #Required
+      Port: 80
+      Protocol: HTTP
+  
+  MyELB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      Name: flask-app-elb
+      SecurityGroups: 
+        - !GetAtt MyELBSecGrp.GroupId
+      Subnets: !Ref Subnets
+      Type: application
+
+  MyLT:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: !FindInMap
+          - RegionImageMap
+          - !Ref "AWS::Region"
+          - !Ref EnvParameter
+        InstanceType: !Ref InstanceType
+        KeyName: !Ref MyKeyPair
+        SecurityGroupIds:
+          - !GetAtt MyEC2SecGrp.GroupId
+        UserData: 
+          Fn::Base64: 
+            !Sub 
+              - |
+                #! /bin/bash
+                yum update -y
+                yum install -y python3 python3-pip
+                pip3 install flask
+                pip3 install flask-mysql
+                echo "Creating dbserver.endpoint..."
+                echo "${RDSDBEndpoint}" > /home/ec2-user/dbserver.endpoint
+                FOLDER="https://raw.githubusercontent.com/hsaltinsoy/my-projects-aws14/main/aws/projects/Project-004-Phonebook-Application/"
+                mkdir phonebook-app-project && cd phonebook-app-project
+                wget $FOLDER/phonebook-app.py
+                mkdir templates && cd templates
+                wget $FOLDER/templates/index.html
+                wget $FOLDER/templates/delete.html
+                wget $FOLDER/templates/add-update.html
+                cd ..
+                python3 phonebook-app.py
+              - RDSDBEndpoint: !GetAtt MyRDS.Endpoint.Address
+        TagSpecifications:
+        - ResourceType: instance
+          Tags:
+          - Key: Name
+            Value: Web Server of ${AWS::StackName} Stack
+      LaunchTemplateName: flask-lt
+  
+  MyASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: flask-asg
+      DesiredCapacity: 2
+      HealthCheckType: ELB
+      HealthCheckGracePeriod: 90
+      LaunchTemplate:
+        LaunchTemplateId: !Ref MyLT
+        Version: 1
+      MaxSize: 3 # Required
+      MinSize: 1 # Required
+      TargetGroupARNs: 
+        - !Ref MyTargetGrp
+      VPCZoneIdentifier: !Ref Subnets
+      
+  MyASGPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref MyASG # Required
+      PolicyType: TargetTrackingScaling
+      TargetTrackingConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ASGAverageCPUUtilization
+        TargetValue: 60.0
+
+  MyRDS:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: 20
+      DBInstanceClass: db.t2.micro
+      DBInstanceIdentifier: db-instance
+      DBName: phonebook
+      VPCSecurityGroups:
+        - !Ref MyDBSecGrp
+      Engine: mysql
+      EngineVersion: 8.0.28
+      MasterUserPassword: # db password
+      MasterUsername: admin
+      MaxAllocatedStorage: 40
+      NetworkType: IPV4
+      Port: 3306
+      PubliclyAccessible: false
+      StorageEncrypted: false
+      StorageType: gp2
+ 
+Outputs:
+  DNScfn:
+    Description: DNS of ELB
+    Value: !Join 
+      - ''
+      - - 'http://'
+        - !GetAtt MyELB.DNSName
+
+    
